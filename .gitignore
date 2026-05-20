@@ -1,0 +1,45 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Dataset — too large for git
+data/raw/
+data/processed/
+
+# MLflow tracking data
+mlruns/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+*.log
+
+# Model artifacts (large binaries — store in MLflow or DVC instead)
+*.pt
+*.pth
+*.h5
+*.pkl
+*.npy
