@@ -61,7 +61,7 @@ Trained on benign traffic only. Reconstruction error above the p95 threshold tri
 ├── api/
 │   └── main.py                   # FastAPI prediction service
 ├── dashboard/
-│   └── app.py                    # Streamlit monitoring dashboard (Phase 4)
+│   └── app.py                    # Streamlit monitoring dashboard
 ├── mlruns/                       # MLflow tracking (not committed)
 ├── Dockerfile.api
 ├── Dockerfile.dashboard
@@ -99,10 +99,26 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 jupyter notebook
 ```
 
+**Phase 4 — Dashboard:**
+```bash
+streamlit run dashboard/app.py --server.port 8501
+```
+
 **Start all services with Docker:**
 ```bash
 docker-compose up --build
 ```
+
+## Dashboard
+
+Four tabs at `http://localhost:8501`:
+
+| Tab | Description |
+|---|---|
+| 📊 Overview | KPIs, attack-type bar chart, confidence & anomaly score distributions |
+| 🔍 Live Predict | Single-flow prediction — sample from test set or paste raw values |
+| 📈 Model Performance | MLflow run comparison table + metric bar charts |
+| 🚨 Anomaly Monitor | Configurable live traffic simulation with rolling anomaly score chart |
 
 ## API endpoints
 
@@ -142,4 +158,4 @@ Interactive docs at `http://localhost:8000/docs`.
 | 1 — Preprocessing | ✅ Done | Load, clean, temporal split, StandardScaler, SMOTE |
 | 2 — Training | ✅ Done | Supervised (LR/RF/XGBoost) + LSTM Autoencoder, MLflow tracking |
 | 3 — Serving | ✅ Done | FastAPI inference endpoint, dual-pipeline unified prediction |
-| 4 — Dashboard | 🔜 Next | Streamlit real-time monitoring |
+| 4 — Dashboard | ✅ Done | Streamlit real-time monitoring dashboard |
