@@ -216,6 +216,12 @@ def run(skip_binary: bool = False):
     log.info("Multi-class train classes: %d  |  test samples after filter: %d",
              len(multi_names), len(y_test_m_r))
 
+    # Persist class metadata for inference
+    with open(PROCESSED / "multi_class_names.pkl", "wb") as f:
+        pickle.dump(multi_names, f)
+    with open(PROCESSED / "train_class_idx.pkl", "wb") as f:
+        pickle.dump(train_class_idx, f)
+
     for name, model in build_models().items():
         if name == "xgboost":
             model.set_params(objective="multi:softprob", eval_metric="mlogloss",

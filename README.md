@@ -4,7 +4,7 @@ An end-to-end AI-powered Network Intrusion Detection System built on the CICIDS2
 
 ## Architecture
 
-Two detection pipelines run in tandem:
+Two detection pipelines run in tandem on every network flow:
 
 - **Supervised** — Logistic Regression, Random Forest, XGBoost classify known attack types
 - **Unsupervised** — LSTM Autoencoder detects zero-day anomalies via reconstruction error
@@ -27,13 +27,11 @@ Place the pre-extracted CSVs under `data/raw/MachineLearningCVE/`.
 | Random Forest | 0.9806 | 0.9981 | 0.9919 |
 | Logistic Regression | 0.8762 | 0.9666 | 0.8529 |
 
-XGBoost is registered as `netguardai_best_binary` → **Production** in the MLflow Model Registry.
+> Multi-class covers 13 of 15 classes. `DoS GoldenEye` and `Heartbleed` fall entirely in the test split due to temporal ordering.
 
-> Multi-class evaluation covers 13 of 15 classes. `DoS GoldenEye` and `Heartbleed` fall entirely in the test split due to temporal ordering and cannot be trained on.
+### LSTM Autoencoder
 
-### LSTM Autoencoder (zero-day detection)
-
-Trained exclusively on benign traffic. Reconstruction error above the p95 threshold triggers an anomaly alert.
+Trained on benign traffic only. Reconstruction error above the p95 threshold triggers an anomaly alert.
 
 | Metric | Score |
 |---|---|
@@ -47,22 +45,23 @@ Trained exclusively on benign traffic. Reconstruction error above the p95 thresh
 ```
 ├── data/
 │   ├── raw/MachineLearningCVE/   # CICIDS2017 CSVs (not committed)
-│   └── processed/                # cleaned arrays & pipeline objects
+│   └── processed/                # cleaned arrays, pipeline objects & exported models
 ├── notebooks/
 │   ├── 01_eda.ipynb              # class distribution, correlation heatmap, feature importance
 │   ├── 02_preprocessing.ipynb   # preprocessing walkthrough & artifact inspection
 │   ├── 03_supervised_training.ipynb  # model comparison, confusion matrices, ROC-AUC
-│   └── 04_autoencoder.ipynb     # training curve, error distribution, threshold sweep
+│   ├── 04_autoencoder.ipynb     # training curve, error distribution, threshold sweep
+│   └── 05_api_inference.ipynb   # live API calls, batch evaluation, dual-pipeline analysis
 ├── src/
 │   ├── preprocess.py             # load, clean, split, scale, SMOTE → data/processed/
-│   ├── train_supervised.py       # LR / RF / XGBoost, both binary & multi-class, MLflow
-│   ├── train_autoencoder.py      # LSTM Autoencoder trained on benign-only traffic, MLflow
-│   ├── predict.py                # unified inference (supervised + autoencoder)
+│   ├── train_supervised.py       # LR / RF / XGBoost, binary & multi-class, MLflow
+│   ├── train_autoencoder.py      # LSTM Autoencoder trained on benign traffic, MLflow
+│   ├── predict.py                # unified inference module (supervised + autoencoder)
 │   └── promote_best_model.py     # promotes best binary run to MLflow Production
 ├── api/
 │   └── main.py                   # FastAPI prediction service
 ├── dashboard/
-│   └── app.py                    # Streamlit monitoring dashboard
+│   └── app.py                    # Streamlit monitoring dashboard (Phase 4)
 ├── mlruns/                       # MLflow tracking (not committed)
 ├── Dockerfile.api
 ├── Dockerfile.dashboard
@@ -90,6 +89,11 @@ python src/train_autoencoder.py       # LSTM Autoencoder
 python src/promote_best_model.py      # promote best binary model to Production
 ```
 
+**Phase 3 — Serving:**
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
 **Notebooks** (use the `Python 3 (NetGuardAI)` kernel):
 ```bash
 jupyter notebook
@@ -99,6 +103,31 @@ jupyter notebook
 ```bash
 docker-compose up --build
 ```
+
+## API endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/model/info` | Loaded model metadata, feature list, class names |
+| `POST` | `/predict` | Single-flow prediction (dict or ordered list) |
+| `POST` | `/predict/batch` | Batch prediction |
+
+Interactive docs at `http://localhost:8000/docs`.
+
+**Example response:**
+```json
+{
+  "label": "DoS Hulk",
+  "is_attack": true,
+  "confidence": 1.0,
+  "anomaly_score": 0.737048,
+  "is_anomaly": false,
+  "anomaly_threshold": 1.483423
+}
+```
+
+## Services
 
 | Service | URL |
 |---|---|
@@ -112,5 +141,5 @@ docker-compose up --build
 |---|---|---|
 | 1 — Preprocessing | ✅ Done | Load, clean, temporal split, StandardScaler, SMOTE |
 | 2 — Training | ✅ Done | Supervised (LR/RF/XGBoost) + LSTM Autoencoder, MLflow tracking |
-| 3 — Serving | 🔜 Next | FastAPI inference endpoint + model promotion |
-| 4 — Dashboard | 🔜 | Streamlit real-time monitoring |
+| 3 — Serving | ✅ Done | FastAPI inference endpoint, dual-pipeline unified prediction |
+| 4 — Dashboard | 🔜 Next | Streamlit real-time monitoring |

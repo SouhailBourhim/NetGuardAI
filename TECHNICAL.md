@@ -7,9 +7,10 @@
 3. [Phase 1 — Preprocessing pipeline](#3-phase-1--preprocessing-pipeline)
 4. [Phase 2 — Supervised learning](#4-phase-2--supervised-learning)
 5. [Phase 2 — LSTM Autoencoder](#5-phase-2--lstm-autoencoder)
-6. [MLflow experiment tracking](#6-mlflow-experiment-tracking)
-7. [Known limitations](#7-known-limitations)
-8. [Dependency reference](#8-dependency-reference)
+6. [Phase 3 — Inference & API](#6-phase-3--inference--api)
+7. [MLflow experiment tracking](#7-mlflow-experiment-tracking)
+8. [Known limitations](#8-known-limitations)
+9. [Dependency reference](#9-dependency-reference)
 
 ---
 
@@ -302,7 +303,81 @@ Final training loss: `0.7234` · Final validation loss: `0.7871`
 
 ---
 
-## 6. MLflow experiment tracking
+## 6. Phase 3 — Inference & API
+
+### 6.1 `src/predict.py` — unified inference module
+
+`predict.py` exposes three public functions used by the API and notebooks:
+
+| Function | Description |
+|---|---|
+| `predict(features)` | Single-flow prediction — dict or ordered list of 47 floats |
+| `predict_batch(feature_list)` | Batch prediction over a list of flows |
+| `model_info()` | Returns model names, feature list, class names, threshold |
+
+All models are cached in the `_Models` singleton and loaded once on first call.
+
+**Dual-pipeline logic per flow:**
+1. Scale features using the fitted `StandardScaler`
+2. Binary classifier → `is_attack` + `confidence`
+3. If attack: multi-class classifier → specific attack `label`
+4. Autoencoder → tile flow into window of 50, compute MSE → `anomaly_score`
+5. `is_anomaly = anomaly_score > threshold`
+
+**Single-flow autoencoder scoring:** Since the autoencoder was trained on windows of 50 consecutive flows, single-flow inference approximates by tiling the flow 50 times into a synthetic window. This preserves the input shape without requiring buffering at the API layer.
+
+**Model loading — Python 3.14 / XGBoost 3.x compatibility:**
+
+Two issues were encountered and resolved:
+
+1. `mlflow.sklearn.load_model()` causes a segfault on Python 3.14 with XGBoost 3.x. Models are instead loaded directly from their pickle artifacts (`data/processed/model_binary.pkl`, `model_multi.pkl`) bypassing the MLflow loading stack entirely.
+
+2. Importing `torch` before unpickling XGBoost models causes a segfault due to a memory allocator conflict between PyTorch's custom allocator and XGBoost's runtime. Fixed by lazy-importing `torch` inside `_Models.__init__()` after all sklearn/XGBoost artifacts are loaded.
+
+3. The autoencoder `.pth` was serialised by MLflow using cloudpickle (full model object, not state dict only). Loaded with `torch.load(..., weights_only=False)`.
+
+**Model export:** A one-time export copies the best-run artifacts from the MLflow model store (`mlruns/.../models/m-xxx/artifacts/`) to `data/processed/` for direct loading:
+
+| File | Source |
+|---|---|
+| `model_binary.pkl` | Best binary XGBoost run artifact |
+| `model_multi.pkl` | Best multi-class XGBoost run artifact |
+| `model_autoencoder.pth` | Best autoencoder run artifact (cloudpickle) |
+
+### 6.2 `api/main.py` — FastAPI service
+
+**Startup:** Models are pre-loaded during the lifespan context (`@asynccontextmanager`) before the server begins accepting requests, so the first request is not penalised by load time.
+
+**Endpoints:**
+
+| Method | Path | Input | Output |
+|---|---|---|---|
+| `GET` | `/health` | — | `{"status": "ok"}` |
+| `GET` | `/model/info` | — | Model metadata + feature/class lists |
+| `POST` | `/predict` | `{"features": dict or list}` | Single `PredictionResponse` |
+| `POST` | `/predict/batch` | `{"flows": [dict or list, ...]}` | `BatchPredictionResponse` |
+
+**Request format:** Features can be submitted as either a named dict (`{"Destination Port": 80.0, ...}`) or an ordered list of 47 floats matching `feature_cols` order. Both are accepted at every prediction endpoint.
+
+**Response schema:**
+
+```json
+{
+  "label":             "DoS Hulk",
+  "is_attack":         true,
+  "confidence":        1.0,
+  "anomaly_score":     0.737048,
+  "is_anomaly":        false,
+  "anomaly_threshold": 1.483423
+}
+```
+
+Interactive documentation: `http://localhost:8000/docs` (Swagger UI).
+
+---
+
+## 7. MLflow experiment tracking
+
 
 **Tracking URI:** `./mlruns` (local filesystem)
 
@@ -323,7 +398,7 @@ mlflow ui --backend-store-uri mlruns --port 5000
 
 ---
 
-## 7. Known limitations
+## 8. Known limitations
 
 | Issue | Impact | Notes |
 |---|---|---|
@@ -335,7 +410,7 @@ mlflow ui --backend-store-uri mlruns --port 5000
 
 ---
 
-## 8. Dependency reference
+## 9. Dependency reference
 
 | Package | Version | Role |
 |---|---|---|
