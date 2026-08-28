@@ -1,6 +1,14 @@
 # NetGuardAI
 
-An end-to-end AI-powered Network Intrusion Detection System built on the CICIDS2017 dataset.
+An end-to-end network intrusion detection system built on the CICIDS2017 dataset, pairing a
+supervised classifier for known attack types with an LSTM autoencoder for zero-day anomalies.
+
+**Stack:** Python · scikit-learn · XGBoost · TensorFlow/Keras · MLflow · FastAPI · Streamlit · Docker
+
+> **Scope note.** CICIDS2017 is a well-studied benchmark and the supervised scores below are near the
+> ceiling reported for it — they measure the pipeline working, not a novel detection result. The part
+> worth reviewing is the dual-pipeline design: the autoencoder is trained on benign traffic only, so it
+> flags deviations the classifier has no label for.
 
 ## Architecture
 
